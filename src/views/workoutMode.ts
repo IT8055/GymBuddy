@@ -349,9 +349,11 @@ function runSession(opts: { workoutId: number | null; title: string; planned: Wo
 
   function exCard(e: Exercise | WorkoutItem, exId: number) {
     const n = doneSets.get(exId) || 0
+    const mach = (e as any).machine_number
     return h('button', { class: 'card tappable row between', onClick: () => run({ ...(e as any), exercise_id: exId, position: 0 }) },
       h('div', {},
         h('div', { style: 'font-weight:600' }, (e as any).name),
+        mach ? h('div', { class: 'list-meta' }, `🛠 Machine ${mach}`) : null,
         n ? h('div', { class: 'list-meta', style: 'color:var(--accent)' }, `✓ ${n} set${n !== 1 ? 's' : ''} logged`) : null),
       h('span', { class: 'pill ' + (e as any).type }, n ? 'Again' : TYPE_LABEL[(e as any).type]))
   }
