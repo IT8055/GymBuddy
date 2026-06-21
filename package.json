@@ -1,6 +1,6 @@
 {
   "name": "gymbuddy",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "GymBuddy — PWA to create, run and log gym workouts.",
   "type": "module",
   "scripts": {
