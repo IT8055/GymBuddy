@@ -1,0 +1,20 @@
+# Route every /api/* request through the front controller.
+RewriteEngine On
+RewriteBase /dev/GymBuddy/api/
+
+# Pass the Authorization header through to PHP (some hosts strip it).
+RewriteCond %{HTTP:Authorization} .
+RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+
+# Send anything that isn't a real file/dir to index.php.
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^ index.php [L]
+
+# Never serve config, the database file, logs, schema or libs directly.
+<FilesMatch "\.(sqlite|log|sql)$">
+  Require all denied
+</FilesMatch>
+<Files "config.php">
+  Require all denied
+</Files>

@@ -1,0 +1,25 @@
+{
+  "name": "gymbuddy",
+  "version": "1.0.2",
+  "description": "GymBuddy — PWA to create, run and log gym workouts.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "api": "php -S localhost:8787 -t api api/router-cli.php",
+    "icons": "node scripts/gen-icons.mjs",
+    "e2e": "node scripts/e2e.mjs"
+  },
+  "devDependencies": {
+    "png-to-ico": "^3.0.1",
+    "puppeteer-core": "^24.43.1",
+    "sharp": "^0.35.2",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.10",
+    "vite-plugin-pwa": "^0.21.1"
+  },
+  "dependencies": {
+    "idb": "^8.0.0"
+  }
+}

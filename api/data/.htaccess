@@ -1,0 +1,2 @@
+# Block all direct web access to the data directory (SQLite db, logs).
+Require all denied

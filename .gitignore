@@ -1,0 +1,17 @@
+node_modules/
+dist/
+dev-dist/
+
+# Real config with live secrets — never commit
+api/config.php
+
+# Local database + logs
+api/data/*.sqlite
+api/data/*.log
+
+# Deployment bundle (contains the real config.php)
+GymBuddy-deploy.zip
+*.zip
+
+.DS_Store
+*.local
