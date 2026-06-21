@@ -44,7 +44,8 @@ export async function workoutEditView(params: Record<string, string>): Promise<H
         h('div', { class: 'card row between' },
           h('div', {},
             h('div', { style: 'font-weight:600' }, `${idx + 1}. ${e.name}`),
-            h('div', { class: 'list-meta' }, TYPE_LABEL[e.type]),
+            h('div', { class: 'list-meta' },
+              (e.machine_number ? `🛠 Machine ${e.machine_number} · ` : '') + TYPE_LABEL[e.type]),
           ),
           h('div', { class: 'row' },
             h('button', { class: 'btn btn-icon sm', onClick: () => move(idx, -1), disabled: idx === 0 }, '↑'),
@@ -78,7 +79,9 @@ export async function workoutEditView(params: Record<string, string>): Promise<H
     for (const e of available) {
       pickerWrap.append(
         h('button', { class: 'card tappable row between', onClick: () => { selected.push(e.id); renderSelected(); renderPicker() } },
-          h('div', { style: 'font-weight:600' }, e.name),
+          h('div', {},
+            h('div', { style: 'font-weight:600' }, e.name),
+            e.machine_number ? h('div', { class: 'list-meta' }, `🛠 Machine ${e.machine_number}`) : null),
           h('span', { class: 'pill ' + e.type }, '+ add'),
         ),
       )
