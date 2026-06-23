@@ -29,6 +29,11 @@ export function settingsView(): HTMLElement {
   const resume = h('input', { type: 'number', min: '0', max: '30', value: String(p.resumeCountdownSecs) }) as HTMLInputElement
   resume.addEventListener('change', () => setPrefs({ resumeCountdownSecs: Number(resume.value) || 0 }))
 
+  const volume = h('input', { type: 'range', min: '0', max: '100', step: '5', value: String(Math.round(p.cueVolume * 100)) }) as HTMLInputElement
+  // Save + play a preview on release so the user can dial in loudness against gym noise.
+  const onVol = () => { setPrefs({ cueVolume: (Number(volume.value) || 0) / 100 }); unlockAudio(); cue.tick() }
+  volume.addEventListener('change', onVol)
+
   function testCue() { unlockAudio(); cue.tick(); setTimeout(() => cue.finish(), 400); speak('Three, two, one') }
 
   function logout() {
@@ -49,6 +54,10 @@ export function settingsView(): HTMLElement {
     h('h2', {}, 'Workout cues'),
     h('div', { class: 'card' },
       toggle('Audio beeps', 'audioCues', 'Countdown ticks and finish chime'),
+      h('div', { class: 'switch' },
+        h('div', {}, h('div', {}, 'Beep volume'), h('div', { class: 'list-meta' }, 'Louder for noisy gyms')),
+        h('div', { style: 'width:130px' }, volume),
+      ),
       toggle('Beep on every rep', 'beepPerRep', 'A beep as each rep counts down'),
       toggle('Voice countdown', 'voiceCues', 'Speaks "3, 2, 1"'),
       toggle('Auto-advance sets', 'autoAdvance', 'Move on automatically after a timer'),

@@ -4,6 +4,7 @@ import { auth } from '../state'
 import { getCachedWorkouts, cacheWorkouts } from '../db'
 import { fmtDateTime } from '../format'
 import { APP_VERSION } from '../version'
+import { loadDraft, resumeHref } from '../activeSession'
 import { empty } from './_shared'
 import type { Workout, SessionSummary } from '../types'
 
@@ -26,7 +27,10 @@ export async function dashboardView(): Promise<HTMLElement> {
   const recentWrap = h('div', {})
   const workoutsWrap = h('div', {})
 
-  root.append(greeting, quick, h('h2', {}, 'Your workouts'), workoutsWrap, h('h2', {}, 'Recent sessions'), recentWrap)
+  const banner = resumeBanner()
+  root.append(greeting)
+  if (banner) root.append(banner)
+  root.append(quick, h('h2', {}, 'Your workouts'), workoutsWrap, h('h2', {}, 'Recent sessions'), recentWrap)
 
   // Workouts (cache-first so it works offline)
   try {
@@ -49,6 +53,23 @@ export async function dashboardView(): Promise<HTMLElement> {
   }
 
   return root
+}
+
+/** Prompt to pick up an unfinished workout left running when the app was closed. */
+function resumeBanner(): HTMLElement | null {
+  const draft = loadDraft()
+  const href = resumeHref()
+  if (!draft || !href) return null
+  const sets = draft.results.length
+  const exns = draft.chosen.length
+  return h('a', { class: 'card tappable row between', href, style: 'border:1px solid var(--accent)' },
+    h('div', {},
+      h('div', { style: 'font-weight:600' }, `⏳ Resume ${draft.title}`),
+      h('div', { class: 'list-meta' },
+        `${exns} exercise${exns !== 1 ? 's' : ''} · ${sets} set${sets !== 1 ? 's' : ''} logged · ${fmtDateTime(draft.startedAt)}`),
+    ),
+    h('span', { class: 'btn btn-primary sm' }, 'Resume'),
+  )
 }
 
 function renderWorkouts(wrap: HTMLElement, workouts: Workout[]) {

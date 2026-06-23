@@ -4,21 +4,26 @@ import { navigate } from '../router'
 import { getCachedWorkouts } from '../db'
 import { saveSession } from '../sync'
 import { cue, speak, unlockAudio } from '../audio'
-import { fmtClock, nowDb, uid, TYPE_LABEL, normalizeMetrics } from '../format'
+import { fmtClock, fmtDateTime, nowDb, uid, TYPE_LABEL, normalizeMetrics } from '../format'
 import { getPrefs } from '../state'
 import { getAmbient } from '../weather'
+import { loadDraft, saveDraft, clearDraft, type SessionDraft } from '../activeSession'
 import { pageHead, empty } from './_shared'
 import type { Workout, WorkoutItem, Exercise, SetResult, SessionPayload, RepStep } from '../types'
 
 type Phase =
-  | { kind: 'timer'; label: string; secs: number; repTotal?: number }
+  | { kind: 'timer'; label: string; secs: number; repTotal?: number; longCountdown?: boolean }
   | { kind: 'stopwatch'; label: string; target: number | null; targetLabel: string | null }
 
 // Only one exercise plays at a time; this lets us stop its timer if the view unmounts.
 let runningClear: (() => void) | null = null
 
 export async function workoutModeView(params: Record<string, string>): Promise<HTMLElement> {
-  if (!params.workoutId) return runSession({ workoutId: null, title: 'Quick session', planned: [] })
+  if (!params.workoutId) {
+    const draft = matchDraft(null)
+    if (draft) return resumeChooser(draft, { workoutId: null, title: 'Quick session', planned: draft.planned })
+    return runSession({ workoutId: null, title: 'Quick session', planned: [] })
+  }
 
   const wid = Number(params.workoutId)
   let workout: Workout | undefined
@@ -31,7 +36,46 @@ export async function workoutModeView(params: Record<string, string>): Promise<H
     return h('div', {}, pageHead('Run', { back: '/workouts' }),
       empty('🤷', 'Nothing to run', 'This workout has no exercises.'))
   }
-  return runSession({ workoutId: workout.id, title: workout.name, planned: workout.items })
+  const draft = matchDraft(wid)
+  const opts = { workoutId: workout.id, title: workout.name, planned: workout.items }
+  if (draft) return resumeChooser(draft, opts)
+  return runSession(opts)
+}
+
+/** A saved in-progress session for this exact route, if one exists. */
+function matchDraft(workoutId: number | null): SessionDraft | null {
+  const d = loadDraft()
+  return d && d.workoutId === workoutId ? d : null
+}
+
+/**
+ * Interstitial shown when re-entering a workout that already has an unfinished
+ * session — lets the user pick up where they left off or scrap it and restart.
+ */
+function resumeChooser(draft: SessionDraft, opts: { workoutId: number | null; title: string; planned: WorkoutItem[] }): HTMLElement {
+  const root = h('div', { class: 'stack' })
+  const sets = draft.results.length
+  const exns = draft.chosen.length
+  const mount = (el: HTMLElement) => root.replaceChildren(el)
+
+  mount(h('div', { class: 'stack' },
+    pageHead(opts.title, { back: opts.workoutId ? '/workouts' : '/' }),
+    h('div', { class: 'card', style: 'text-align:center' },
+      h('div', { style: 'font-size:1.8rem' }, '⏳'),
+      h('h2', { style: 'margin:6px 0' }, 'Unfinished session'),
+      h('p', { class: 'muted', style: 'margin:0 0 4px' },
+        `${exns} exercise${exns !== 1 ? 's' : ''} · ${sets} set${sets !== 1 ? 's' : ''} logged`),
+      h('p', { class: 'list-meta', style: 'margin:0' }, `Started ${fmtDateTime(draft.startedAt)}`)),
+    h('button', { class: 'btn btn-primary', style: 'font-size:1.1rem;padding:16px',
+      onClick: () => mount(runSession({ ...opts, resume: draft })) }, '▶  Resume session'),
+    h('button', { class: 'btn btn-ghost',
+      onClick: () => {
+        if (sets && !confirm(`Discard ${sets} logged set${sets !== 1 ? 's' : ''} and start over?`)) return
+        clearDraft()
+        mount(runSession(opts))
+      } }, 'Discard & start fresh'),
+  ))
+  return root
 }
 
 function buildPhases(e: WorkoutItem): Phase[] {
@@ -47,8 +91,26 @@ function buildPhases(e: WorkoutItem): Phase[] {
       return { kind: 'timer', label, secs: s.secs }
     })
   }
-  if (e.type === 'timed') return [{ kind: 'timer', label: 'Go', secs: e.default_duration_secs || 60 }]
+  if (e.type === 'timed') return [{ kind: 'timer', label: 'Go', secs: e.default_duration_secs || 60, longCountdown: true }]
   return [{ kind: 'stopwatch', label: 'Go', target: e.target_value ?? null, targetLabel: e.target_label ?? null }]
+}
+
+/**
+ * Spoken milestones for a long timed exercise, fired once per whole-second boundary:
+ * every 5 minutes remaining, then 3/2/1 minutes, then a 5-second finish countdown.
+ */
+function announceLongCountdown(remaining: number) {
+  const isMinuteMark = (remaining >= 300 && remaining % 300 === 0) || remaining === 180 || remaining === 120 || remaining === 60
+  if (isMinuteMark) {
+    cue.tick()
+    if (getPrefs().voiceCues) {
+      const mins = remaining / 60
+      speak(`${mins} minute${mins === 1 ? '' : 's'} remaining`)
+    }
+  } else if (remaining <= 5) {
+    cue.tick()
+    if (getPrefs().voiceCues) speak(String(remaining))
+  }
 }
 
 /**
@@ -169,6 +231,9 @@ function runExercise(
         }
         shownReps = repsNow
       }
+    } else if (p.longCountdown) {
+      // Long timed exercise: announce 5-minute marks, then 3/2/1 min, then the last 5s.
+      if (remaining > 0 && remaining !== lastCue) { lastCue = remaining; announceLongCountdown(remaining) }
     } else {
       const lead = getPrefs().cueLeadSecs
       if (remaining <= lead && remaining > 0 && remaining !== lastCue) {
@@ -322,17 +387,28 @@ function runExercise(
  * (seeded with its exercises) and an on-the-fly quick session (no plan).
  * Exercises can be done in ANY order, repeated, and extra ones added mid-session.
  */
-function runSession(opts: { workoutId: number | null; title: string; planned: WorkoutItem[] }): HTMLElement {
+function runSession(opts: { workoutId: number | null; title: string; planned: WorkoutItem[]; resume?: SessionDraft | null }): HTMLElement {
   const { workoutId, title } = opts
   const back = workoutId ? '/workouts' : '/'
   const root = h('div', { class: 'wm' })
-  const results: SetResult[] = []
-  const startedAt = nowDb()
-  const doneSets = new Map<number, number>()   // exercise_id -> sets logged
-  const chosen: number[] = []                  // distinct exercises done (for save-as-workout)
+  const resume = opts.resume
+  const results: SetResult[] = resume ? [...resume.results] : []
+  const startedAt = resume ? resume.startedAt : nowDb()
+  const doneSets = new Map<number, number>(resume ? resume.doneSets : [])   // exercise_id -> sets logged
+  const chosen: number[] = resume ? [...resume.chosen] : []                 // distinct exercises done (for save-as-workout)
   let allExercises: Exercise[] = []
 
   const plannedIds = new Set(opts.planned.map((p) => p.exercise_id))
+
+  // Persist after every logged exercise so locking the phone / leaving the app
+  // never loses progress — the session can be resumed from where it left off.
+  function persist() {
+    if (!results.length) return
+    saveDraft({
+      workoutId, title, startedAt, planned: opts.planned, results,
+      doneSets: [...doneSets.entries()], chosen, updatedAt: nowDb(),
+    })
+  }
 
   function run(item: WorkoutItem) {
     const doneN = [...doneSets.keys()].length
@@ -342,6 +418,7 @@ function runSession(opts: { workoutId: number | null; title: string; planned: Wo
         results.push(...sets)
         doneSets.set(item.exercise_id, (doneSets.get(item.exercise_id) || 0) + sets.length)
         if (!chosen.includes(item.exercise_id)) chosen.push(item.exercise_id)
+        persist()
       }
       picker()
     })
@@ -409,6 +486,8 @@ function showDone(root: HTMLElement, results: SetResult[], startedAt: string, wo
       const { online } = await saveSession(payload)
       toast(online ? 'Workout saved 💪' : 'Saved offline — will sync', 'success')
     } catch { toast('Saved locally', 'info') }
+    // The session is now in the (offline-capable) sync queue — drop the resume draft.
+    clearDraft()
     if (wname && wname.value.trim() && saveAsChosen?.length) {
       try { await api.post('/workouts', { name: wname.value.trim(), exercise_ids: saveAsChosen }) } catch {}
     }

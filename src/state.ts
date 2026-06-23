@@ -14,6 +14,7 @@ export interface Prefs {
   cueLeadSecs: number
   recordWeather: boolean
   resumeCountdownSecs: number
+  cueVolume: number // 0..1 master loudness for beeps
 }
 
 const DEFAULT_PREFS: Prefs = {
@@ -26,6 +27,7 @@ const DEFAULT_PREFS: Prefs = {
   cueLeadSecs: 3,
   recordWeather: true,
   resumeCountdownSecs: 5,
+  cueVolume: 1,
 }
 
 export const auth = {

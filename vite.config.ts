@@ -1,8 +1,23 @@
 import { defineConfig } from 'vite'
 import { VitePWA } from 'vite-plugin-pwa'
+import { cpSync } from 'node:fs'
 
 // The app is served from a subfolder on the cPanel server.
 const BASE = '/dev/GymBuddy/'
+
+// Copy the PHP backend into dist/ after each build so the whole app — frontend +
+// api (incl. config.php) — is one deployable folder you can sync in a single step.
+// Runs in closeBundle (after Vite has emptied & written dist), so it isn't wiped,
+// and after the PWA plugin so the .php files are never added to the precache.
+function copyApiToDist() {
+  return {
+    name: 'copy-api-to-dist',
+    enforce: 'post' as const,
+    closeBundle() {
+      cpSync('api', 'dist/api', { recursive: true })
+    },
+  }
+}
 
 export default defineConfig({
   base: BASE,
@@ -57,5 +72,6 @@ export default defineConfig({
         enabled: false,
       },
     }),
+    copyApiToDist(),
   ],
 })
