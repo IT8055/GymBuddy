@@ -320,7 +320,7 @@ function runExercise(
     }
     const isRest = p.repTotal === undefined && p.label !== 'Go'
     const ring = p.repTotal
-      ? clockEl(String(p.repTotal), paused ? 'Paused' : 'reps left', 1, { sub: fmtClock(p.secs), rest: paused, bar: !paused })   // big = reps remaining
+      ? clockEl(String(p.repTotal), paused ? 'Paused' : 'reps left', 1, { rest: paused, bar: !paused })   // big = reps remaining (no time countdown for reps)
       : clockEl(fmtClock(remaining), paused ? 'Paused' : p.label, 1, { rest: isRest || paused })
     return h('div', { class: 'stack' },
       h('div', { class: 'wm-progress' }, `Step ${phaseIdx + 1} of ${phases.length} · ${paused ? 'Paused' : p.label}`),
