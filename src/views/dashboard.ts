@@ -2,7 +2,7 @@ import { h } from '../dom'
 import { api } from '../api'
 import { auth } from '../state'
 import { getCachedWorkouts, cacheWorkouts } from '../db'
-import { fmtDateTime } from '../format'
+import { fmtDateTime, exerciseCountLabel } from '../format'
 import { APP_VERSION } from '../version'
 import { loadDraft, resumeHref } from '../activeSession'
 import { empty } from './_shared'
@@ -105,7 +105,7 @@ function renderSessions(wrap: HTMLElement, sessions: SessionSummary[]) {
           h('div', { style: 'font-weight:600' }, s.workout_name || 'Quick session'),
           h('div', { class: 'list-meta' }, fmtDateTime(s.started_at)),
         ),
-        h('span', { class: 'pill' }, `${s.set_count} sets`),
+        h('span', { class: 'pill' }, exerciseCountLabel(s.exercise_count)),
       ),
     )
   }

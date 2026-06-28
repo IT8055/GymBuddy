@@ -39,6 +39,12 @@ export const TYPE_LABEL: Record<string, string> = {
   reps: 'Reps', timed: 'Timed', target: 'Target',
 }
 
+/** "N exercises" pill label for a session summary (handles string/undefined counts). */
+export function exerciseCountLabel(n: number | undefined): string {
+  const c = Number(n) || 0
+  return `${c} exercise${c !== 1 ? 's' : ''}`
+}
+
 import type { Metric } from './types'
 
 /**

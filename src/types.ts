@@ -100,6 +100,7 @@ export interface SessionSummary {
   ended_at: string | null
   comments: string | null
   set_count: number
+  exercise_count?: number
 }
 
 export interface User {

@@ -6,7 +6,8 @@ function list_sessions(): void
     $user = require_user();
     $rows = q(
         'SELECT s.*, w.name AS workout_name,
-                (SELECT COUNT(*) FROM set_results sr WHERE sr.session_id = s.id) AS set_count
+                (SELECT COUNT(*) FROM set_results sr WHERE sr.session_id = s.id) AS set_count,
+                (SELECT COUNT(DISTINCT sr.exercise_id) FROM set_results sr WHERE sr.session_id = s.id) AS exercise_count
          FROM sessions s
          LEFT JOIN workouts w ON w.id = s.workout_id
          WHERE s.user_id = ?
