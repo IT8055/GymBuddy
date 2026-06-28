@@ -203,6 +203,9 @@ body.offline #outlet::before {
 
 /* ---- Secondary timer under the big number ---- */
 .timer-sub { color: var(--muted); font-size: 1.05rem; margin-top: 4px; font-variant-numeric: tabular-nums; }
+/* Per-rep tempo bar under the reps-remaining number: full at each rep's start, empties as it's performed. */
+.rep-bar { width: 120px; height: 8px; margin-top: 12px; background: var(--surface-2); border-radius: 4px; overflow: hidden; }
+.rep-bar-fill { height: 100%; width: 100%; background: var(--accent); border-radius: 4px; transition: width .2s linear; }
 
 /* ---- Effort picker (1-10) ---- */
 .effort-row { display: flex; gap: 6px; flex-wrap: wrap; }

@@ -262,6 +262,12 @@ function runExercise(
     if (p.repTotal) {
       if (big) big.textContent = String(Math.max(0, Math.ceil(p.repTotal * frac)))
       if (sub) sub.textContent = fmtClock(remaining)
+      const bar = root.querySelector('#tbar') as HTMLElement | null
+      if (bar) {
+        const repsFloat = p.repTotal * (1 - frac)         // reps performed so far (fractional)
+        const within = repsFloat - Math.floor(repsFloat)  // progress through the current rep, 0..1
+        bar.style.width = `${Math.max(0, 1 - within) * 100}%` // 100% at rep start → 0% as it finishes
+      }
     } else if (big) big.textContent = fmtClock(remaining)
   }
 
@@ -314,7 +320,7 @@ function runExercise(
     }
     const isRest = p.repTotal === undefined && p.label !== 'Go'
     const ring = p.repTotal
-      ? clockEl(String(p.repTotal), paused ? 'Paused' : 'reps left', 1, { sub: fmtClock(p.secs), rest: paused })   // big = reps remaining
+      ? clockEl(String(p.repTotal), paused ? 'Paused' : 'reps left', 1, { sub: fmtClock(p.secs), rest: paused, bar: !paused })   // big = reps remaining
       : clockEl(fmtClock(remaining), paused ? 'Paused' : p.label, 1, { rest: isRest || paused })
     return h('div', { class: 'stack' },
       h('div', { class: 'wm-progress' }, `Step ${phaseIdx + 1} of ${phases.length} · ${paused ? 'Paused' : p.label}`),
@@ -431,7 +437,7 @@ function runSession(opts: { workoutId: number | null; title: string; planned: Wo
       h('div', {},
         h('div', { style: 'font-weight:600' }, (e as any).name),
         mach ? h('div', { class: 'list-meta' }, `🛠 Machine ${mach}`) : null,
-        n ? h('div', { class: 'list-meta', style: 'color:var(--accent)' }, `✓ ${n} set${n !== 1 ? 's' : ''} logged`) : null),
+        n ? h('div', { class: 'list-meta', style: 'color:var(--accent)' }, '✓ Completed') : null),
       h('span', { class: 'pill ' + (e as any).type }, n ? 'Again' : TYPE_LABEL[(e as any).type]))
   }
 
@@ -447,7 +453,11 @@ function runSession(opts: { workoutId: number | null; title: string; planned: Wo
     root.replaceChildren(h('div', {},
       pageHead(title, { back }),
       h('div', { class: 'card' },
-        h('div', { style: 'font-weight:600' }, results.length ? `${chosen.length} exercise${chosen.length !== 1 ? 's' : ''} done · ${results.length} set${results.length !== 1 ? 's' : ''} logged` : 'Ready — tap any exercise to start'),
+        h('div', { style: 'font-weight:600' }, results.length
+          ? (opts.planned.length
+              ? `${chosen.length} of ${opts.planned.length} exercise${opts.planned.length !== 1 ? 's' : ''} completed`
+              : `${chosen.length} exercise${chosen.length !== 1 ? 's' : ''} completed`)
+          : 'Ready — tap any exercise to start'),
         h('div', { class: 'list-meta' }, 'Do them in any order. Tap one to begin; finish when you’re done.')),
       finishBtn,
       opts.planned.length ? h('h2', {}, 'In this workout') : null,
@@ -494,9 +504,10 @@ function showDone(root: HTMLElement, results: SetResult[], startedAt: string, wo
     navigate('/history')
   }
 
+  const exDone = new Set(results.map((r) => r.exercise_id)).size
   root.replaceChildren(h('div', {},
     pageHead(title, { back: workoutId ? '/workouts' : '/' }),
-    empty('🎉', 'Workout complete!', `${results.length} set${results.length !== 1 ? 's' : ''} logged.`),
+    empty('🎉', 'Workout complete!', `${exDone} exercise${exDone !== 1 ? 's' : ''} completed.`),
     h('div', { class: 'field' }, h('label', {}, 'Session notes'), comments),
     wname ? h('div', { class: 'field' }, h('label', {}, 'Save as workout (optional)'), wname) : null,
     h('button', { class: 'btn btn-primary', onClick: (ev: Event) => finishWorkout(ev.currentTarget as HTMLButtonElement) }, 'Save & finish'),
@@ -511,7 +522,7 @@ function attachCleanup(root: HTMLElement) {
 }
 
 // ---- small UI helpers ----
-function clockEl(big: string, label: string, _frac: number, opts: { rest?: boolean; sub?: string }): HTMLElement {
+function clockEl(big: string, label: string, _frac: number, opts: { rest?: boolean; sub?: string; bar?: boolean }): HTMLElement {
   const C = 2 * Math.PI * 115
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
   svg.setAttribute('viewBox', '0 0 260 260')
@@ -521,7 +532,9 @@ function clockEl(big: string, label: string, _frac: number, opts: { rest?: boole
     h('div', { class: 'timer-num' },
       h('div', { class: 'big', id: 'tnum' }, big),
       h('div', { class: 'lbl' }, label),
-      opts.sub != null ? h('div', { class: 'timer-sub', id: 'tsub' }, opts.sub) : null))
+      opts.sub != null ? h('div', { class: 'timer-sub', id: 'tsub' }, opts.sub) : null,
+      // Per-rep tempo bar: full at the start of each rep, empties as the rep is performed.
+      opts.bar ? h('div', { class: 'rep-bar' }, h('div', { class: 'rep-bar-fill', id: 'tbar' })) : null))
 }
 
 function effortPicker(): { el: HTMLElement; get: () => number | null } {
