@@ -336,20 +336,24 @@ function runExercise(
     const notes = h('textarea', { placeholder: 'Notes about this exercise (optional)' }) as HTMLTextAreaElement
 
     if (e.type === 'reps') {
-      const weight = numInput(e.default_weight ?? '')
       const setSteps = (Array.isArray(e.steps) ? e.steps : []).filter((s) => s.kind === 'set') as Extract<RepStep, { kind: 'set' }>[]
+      // One weight input per set so each set can be logged at its own load
+      // (e.g. a drop set or a working weight that climbs set to set). All default
+      // to the exercise's default weight; edit whichever ones differ.
+      const rows = setSteps.length ? setSteps : [{ kind: 'set', reps: undefined } as any]
+      const weightInputs = rows.map(() => numInput(e.default_weight ?? ''))
       return h('div', { class: 'stack' },
         h('h2', {}, 'Log this exercise'),
-        h('p', { class: 'list-meta' }, `${setSteps.length} set${setSteps.length !== 1 ? 's' : ''}: ${setSteps.map((s) => s.reps).join(', ')} reps`),
-        field(`Weight used (${e.unit || 'kg'})`, weight),
+        h('p', { class: 'list-meta' }, `${setSteps.length || 1} set${(setSteps.length || 1) !== 1 ? 's' : ''} · enter the weight used for each`),
+        ...rows.map((s, i) =>
+          field(`Set ${i + 1}${s.reps != null ? ` — ${s.reps} reps` : ''} · weight (${e.unit || 'kg'})`, weightInputs[i])),
         effort.el, field('Notes', notes),
         h('button', { class: 'btn btn-primary', onClick: () => {
-          const w = num(weight)
-          const sets: SetResult[] = setSteps.map((s, i) => ({
-            exercise_id: e.exercise_id, set_number: i + 1, reps: s.reps, weight: w,
+          const sets: SetResult[] = rows.map((s, i) => ({
+            exercise_id: e.exercise_id, set_number: i + 1, reps: s.reps, weight: num(weightInputs[i]),
             effort: effort.get(), comments: notes.value || null, recorded_at: nowDb(),
           }))
-          finish(sets.length ? sets : [{ exercise_id: e.exercise_id, set_number: 1, weight: w, effort: effort.get(), comments: notes.value || null, recorded_at: nowDb() }])
+          finish(sets)
         } }, 'Save & continue →'))
     }
 
@@ -402,6 +406,9 @@ function runSession(opts: { workoutId: number | null; title: string; planned: Wo
   const startedAt = resume ? resume.startedAt : nowDb()
   const doneSets = new Map<number, number>(resume ? resume.doneSets : [])   // exercise_id -> sets logged
   const chosen: number[] = resume ? [...resume.chosen] : []                 // distinct exercises done (for save-as-workout)
+  // One stable id for the whole session. Reused on resume so the server keeps
+  // upserting the same row rather than spawning duplicates.
+  const clientUid = (resume && resume.clientUid) ? resume.clientUid : uid()
   let allExercises: Exercise[] = []
 
   const plannedIds = new Set(opts.planned.map((p) => p.exercise_id))
@@ -412,8 +419,23 @@ function runSession(opts: { workoutId: number | null; title: string; planned: Wo
     if (!results.length) return
     saveDraft({
       workoutId, title, startedAt, planned: opts.planned, results,
-      doneSets: [...doneSets.entries()], chosen, updatedAt: nowDb(),
+      doneSets: [...doneSets.entries()], chosen, updatedAt: nowDb(), clientUid,
     })
+  }
+
+  // Commit the logged-so-far session straight to the backend (as an in-progress
+  // session, ended_at=null). This is what actually stops data loss: every logged
+  // exercise reaches permanent storage immediately, surviving back navigation,
+  // app kills, or localStorage eviction. Keyed by clientUid so it upserts one row.
+  // Best-effort: if offline it stays queued and syncs later; the localStorage
+  // draft is the belt-and-braces backup either way.
+  function commit() {
+    if (!results.length) return
+    const payload: SessionPayload = {
+      client_uid: clientUid, workout_id: workoutId, started_at: startedAt,
+      ended_at: null, comments: null, sets: results, ambient: null,
+    }
+    void saveSession(payload).catch(() => {})
   }
 
   function run(item: WorkoutItem) {
@@ -425,6 +447,7 @@ function runSession(opts: { workoutId: number | null; title: string; planned: Wo
         doneSets.set(item.exercise_id, (doneSets.get(item.exercise_id) || 0) + sets.length)
         if (!chosen.includes(item.exercise_id)) chosen.push(item.exercise_id)
         persist()
+        commit()
       }
       picker()
     })
@@ -447,7 +470,7 @@ function runSession(opts: { workoutId: number | null; title: string; planned: Wo
     const addable = allExercises.filter((e) => !plannedIds.has(e.id))
     const addList = h('div', { class: 'stack' }, ...addable.map((e) => exCard(e, e.id)))
 
-    const finishBtn = h('button', { class: 'btn btn-primary', onClick: () => showDone(root, results, startedAt, workoutId, title, workoutId ? null : chosen) },
+    const finishBtn = h('button', { class: 'btn btn-primary', onClick: () => showDone(root, results, startedAt, workoutId, title, workoutId ? null : chosen, clientUid) },
       results.length ? '✓  Finish & save session' : 'Finish (nothing logged yet)')
 
     root.replaceChildren(h('div', {},
@@ -477,7 +500,7 @@ function runSession(opts: { workoutId: number | null; title: string; planned: Wo
 }
 
 // ---- Shared finish screen ----
-function showDone(root: HTMLElement, results: SetResult[], startedAt: string, workoutId: number | null, title: string, saveAsChosen: number[] | null) {
+function showDone(root: HTMLElement, results: SetResult[], startedAt: string, workoutId: number | null, title: string, saveAsChosen: number[] | null, clientUid: string) {
   const comments = h('textarea', { placeholder: 'Overall session notes (optional)' }) as HTMLTextAreaElement
   const wname = saveAsChosen && saveAsChosen.length
     ? h('input', { placeholder: 'Name to reuse this as a workout' }) as HTMLInputElement
@@ -489,7 +512,7 @@ function showDone(root: HTMLElement, results: SetResult[], startedAt: string, wo
     let ambient = null
     if (getPrefs().recordWeather) { try { ambient = await getAmbient() } catch {} }
     const payload: SessionPayload = {
-      client_uid: uid(), workout_id: workoutId, started_at: startedAt, ended_at: nowDb(),
+      client_uid: clientUid, workout_id: workoutId, started_at: startedAt, ended_at: nowDb(),
       comments: comments.value || null, sets: results, ambient,
     }
     try {

@@ -44,11 +44,13 @@ export async function sessionDetailView(params: Record<string, string>): Promise
       if (set.extras) for (const [k, v] of Object.entries(set.extras)) {
         if (k.toLowerCase() !== 'distance' && k.toLowerCase() !== 'calories') parts.push(`${v} ${k}`)
       }
-      if (set.effort != null) parts.push(`effort ${set.effort}/10`)
       return h('div', { class: 'row between', style: 'padding:4px 0' },
         h('span', { class: 'muted' }, `Set ${set.set_number}`),
         h('span', {}, parts.join(' · ') || '—'))
     })
+    // Effort is recorded once for the whole exercise (same across its sets), so
+    // show it a single time under the sets rather than repeated on every row.
+    const effort = sets.map((s) => s.effort).find((e) => e != null)
     // Notes are stored per set; show the first non-empty one for the exercise.
     const note = sets.map((s) => s.comments).find((c) => c)
     body.append(
@@ -59,6 +61,11 @@ export async function sessionDetailView(params: Record<string, string>): Promise
         ),
         h('div', { class: 'divider', style: 'margin:8px 0' }),
         ...rows,
+        effort != null
+          ? h('div', { class: 'row between', style: 'padding:4px 0;margin-top:4px' },
+              h('span', { class: 'muted' }, 'Effort'),
+              h('span', {}, `${effort}/10`))
+          : null,
         note ? h('p', { class: 'list-meta', style: 'margin-top:8px;font-style:italic' }, `“${note}”`) : null,
       ),
     )

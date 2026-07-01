@@ -13,6 +13,9 @@ export interface SessionDraft {
   doneSets: [number, number][] // serialized Map entries: exercise_id -> sets logged
   chosen: number[]
   updatedAt: string
+  // Stable id for this session, shared with the server so every incremental
+  // save upserts the SAME history row instead of creating duplicates.
+  clientUid?: string
 }
 
 export function saveDraft(d: SessionDraft) {

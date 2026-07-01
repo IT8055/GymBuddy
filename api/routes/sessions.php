@@ -37,8 +37,14 @@ function get_session(string $id): void
 }
 
 /**
- * Create a session with its set results in one call.
- * Idempotent on client_uid so offline sync can safely retry.
+ * Create OR update a session with its set results in one call.
+ *
+ * Upsert keyed on client_uid: the client saves after EVERY logged exercise
+ * (an in-progress session, ended_at=null), then once more when finishing.
+ * Each call carries the full snapshot of sets so far, so we replace the row's
+ * sets wholesale. A workout's data therefore reaches permanent storage the
+ * moment each exercise is logged — pressing back, killing the app, or losing
+ * localStorage can no longer wipe it. Re-posting the same payload is harmless.
  */
 function create_session(): void
 {
@@ -46,10 +52,9 @@ function create_session(): void
     $b = body();
 
     $clientUid = isset($b['client_uid']) ? substr((string) $b['client_uid'], 0, 64) : null;
-    if ($clientUid) {
-        $existing = q1('SELECT id FROM sessions WHERE user_id = ? AND client_uid = ?', [$user['id'], $clientUid]);
-        if ($existing) { send_json(['session_id' => (int) $existing['id'], 'deduped' => true]); }
-    }
+    $existing = $clientUid
+        ? q1('SELECT id FROM sessions WHERE user_id = ? AND client_uid = ?', [$user['id'], $clientUid])
+        : null;
 
     $workoutId = isset($b['workout_id']) && $b['workout_id'] !== null ? (int) $b['workout_id'] : null;
     if ($workoutId) {
@@ -63,11 +68,22 @@ function create_session(): void
     $pdo = db();
     $pdo->beginTransaction();
     try {
-        $sid = exec_write(
-            'INSERT INTO sessions (user_id, workout_id, client_uid, started_at, ended_at, comments, ambient)
-             VALUES (?, ?, ?, ?, ?, ?, ?)',
-            [$user['id'], $workoutId, $clientUid, $startedAt, $endedAt, $b['comments'] ?? null, $ambient]
-        );
+        if ($existing) {
+            $sid = (int) $existing['id'];
+            exec_write(
+                'UPDATE sessions SET workout_id = ?, started_at = ?, ended_at = ?, comments = ?, ambient = ?
+                 WHERE id = ? AND user_id = ?',
+                [$workoutId, $startedAt, $endedAt, $b['comments'] ?? null, $ambient, $sid, $user['id']]
+            );
+            // Replace the set snapshot with the latest full list from the client.
+            exec_write('DELETE FROM set_results WHERE session_id = ?', [$sid]);
+        } else {
+            $sid = exec_write(
+                'INSERT INTO sessions (user_id, workout_id, client_uid, started_at, ended_at, comments, ambient)
+                 VALUES (?, ?, ?, ?, ?, ?, ?)',
+                [$user['id'], $workoutId, $clientUid, $startedAt, $endedAt, $b['comments'] ?? null, $ambient]
+            );
+        }
 
         $sets = is_array($b['sets'] ?? null) ? $b['sets'] : [];
         foreach ($sets as $set) {
@@ -95,7 +111,7 @@ function create_session(): void
         $pdo->rollBack();
         throw $e;
     }
-    send_json(['session_id' => $sid], 201);
+    send_json(['session_id' => $sid, 'updated' => (bool) $existing], $existing ? 200 : 201);
 }
 
 function delete_session(string $id): void
@@ -118,6 +134,9 @@ function exercise_progress(string $exerciseId): void
         'SELECT s.started_at AS date,
                 SUM(sr.reps) AS total_reps,
                 MAX(sr.weight) AS max_weight,
+                -- Volume load: weight x reps summed across every set in the session.
+                -- COALESCE keeps bodyweight sets (null weight) from voiding the sum.
+                SUM(COALESCE(sr.weight, 0) * COALESCE(sr.reps, 0)) AS total_volume,
                 SUM(sr.distance) AS total_distance,
                 SUM(sr.duration_secs) AS total_duration,
                 SUM(sr.calories) AS total_calories,

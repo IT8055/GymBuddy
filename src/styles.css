@@ -160,11 +160,13 @@ body.offline #outlet::before {
 .set-dot.done { background: var(--accent); border-color: var(--accent); }
 .set-dot.active { box-shadow: 0 0 0 3px rgba(34,197,94,.3); }
 
-/* ---- Bars (mini chart) ---- */
-.bars { display: flex; align-items: flex-end; gap: 4px; height: 120px; margin: 12px 0; }
-.bar { flex: 1; background: var(--accent); border-radius: 4px 4px 0 0; min-height: 3px; opacity: .85; }
-.bar-wrap { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; }
-.bar-label { font-size: .6rem; color: var(--muted); }
+/* ---- Line chart (progress) ---- */
+.chart { display: block; width: 100%; height: auto; margin: 8px 0 4px; }
+.chart-grid { stroke: var(--border); stroke-width: 1; opacity: .6; }
+.chart-axis { stroke: var(--border); stroke-width: 1; }
+.chart-line { stroke: var(--accent); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.chart-dot { fill: var(--accent); }
+.chart-ylabel, .chart-xlabel { fill: var(--muted); font-size: 9px; }
 
 .list-meta { font-size: .82rem; color: var(--muted); }
 .divider { height: 1px; background: var(--border); margin: 16px 0; }
